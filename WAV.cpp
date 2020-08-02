@@ -1,15 +1,18 @@
 #include "WAV.h"
 #include <iostream>
+#include <sstream>
+
 
 
 
 void WAV::read() {
     doUWantSave();
-    if(std::cin.peek() == '\n') std::cout << "Enter input filename.\n";
+    if(std::cin.rdbuf()->in_avail() < 2) std::cout << "Enter input filename: ";
     std::string s;
-    while(s.empty()) std::cin >> s;
+    std::cin >> s;
+    std::cout << '\n';
     if (s[0] == '\"') s = s.substr(1, s.length() - 2);
-    *this = WAV(s.data());
+    read(s.data());
 }
 
 void WAV::doUWantSave() {
@@ -31,8 +34,8 @@ void WAV::read(const char* filename) {
     FILE* f;
     fopen_s(&f, filename, "rb");
     if (f == nullptr) {
-        printf("Cannot open file.\n");
-        exit(1);
+        printf("Cannot open file.\nTry again\n");
+        read();
     }
 
     auto check = [](char* a, const char* b, int kol) {
@@ -114,8 +117,8 @@ void WAV::write(const char* filename) {
     FILE* f;
     fopen_s(&f, filename, "wb");
     if (f == nullptr) {
-        printf("Cannot open file.\n");
-        exit(1);
+        printf("Cannot open file.\nTry again\n");
+        write();
     }
 
     fwrite(chunkId, 1, 4, f);
@@ -141,7 +144,7 @@ void WAV::write(const char* filename) {
     fwrite(&bitsPerSample, 2, 1, f);
 
 
-    if (subchunk1Size != 16 && audioFormat != 1) { // not PCM
+    if (subchunk1Size != 16 && audioFormat != 1) {
         fwrite(&extraParamSize, 2, 1, f);
         for (int i = 0; i < extraParamSize; i++) 
             fwrite(&extraParam[i], 1, 1, f);
@@ -172,9 +175,10 @@ void WAV::write(const char* filename) {
 }
 
 void WAV::write(){
-    if (std::cin.peek() == '\n') std::cout << "Enter output filename.\n";
+    if (std::cin.peek() == '\n') std::cout << "Enter output filename: ";
     std::string s;
     std::cin >> s;
+    std::cout << '\n';
     if (s[0] == '\"') s = s.substr(1, s.length() - 2);
     write(s.data());
 }
@@ -182,20 +186,13 @@ void WAV::write(){
 void WAV::cut() {
 
     if (!readed) {
-        std::cout << "Warning:first read the WAV file.\n";
-        return;
+        std::cout << "Warning:first read the WAV file.\n\n";
+        read();
     }
 
-    auto outDuration = [](short durationInSec) {
-        short minutes = durationInSec / 60;
-        short seconds = durationInSec - minutes * 60;
-        std::cout << minutes << '.' << seconds << "\n\n";
-    };
+    if (std::cin.rdbuf()->in_avail() < 3) std::cout << "Duration of the audio file is " << outDuration() << "\n\n";
 
-    std::cout << "Duration of the audio file is ";
-    outDuration(subchunk2Size / byteRate);
-
-    short start, end;
+    unsigned short start, end;
     std::string st, en;
 
     auto parseInt = [](std::string s) {
@@ -208,7 +205,7 @@ void WAV::cut() {
     };
 
     auto parse = [parseInt](std::string s) {
-        int i = 0;
+        unsigned int i = 0;
         while (i < s.length() && s[i] != '.') i++;
         if (i < s.length() && s[i] == '.') return parseInt(s.substr(0, i)) * 60 + 
             parseInt(s.substr(i + 1, 2));
@@ -233,16 +230,18 @@ void WAV::cut() {
     for (int i = 0; i < numChannels; i++) {
         data[i].erase(data[i].begin(), data[i].begin() + start * byteRate / numChannels);
         data[i].erase(data[i].begin() + (end - start) * byteRate / numChannels, data[i].end());
+        data[i].shrink_to_fit();
     }
-
     chunkSize -= subchunk2Size - (end - start) * byteRate;
     subchunk2Size = (end - start) * byteRate;
 
-    std::cout << "Succsesfull cut\n\n";
-    std::cout << "New Duration ";
-    outDuration(end - start);
-    std::cout << "\n\n";
+    std::cout << "Succsesfull cut\n\nNew Duration is " << outDuration() << "\n\n";
     saved = false;
+}
+
+std::string WAV::outDuration()
+{
+   return (std::stringstream() << subchunk2Size / byteRate / 60 << "." << subchunk2Size / byteRate - subchunk2Size / byteRate / 60 * 60).str();
 }
 
 WAV::~WAV(){
